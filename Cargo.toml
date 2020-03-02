@@ -30,12 +30,12 @@ bitflags = "1.2"
 itertools = "0.8"
 idna = "0.2"
 serde =  { version = "1.0.101", features = ["derive", "rc"] }
-flate2 = { version = "1.0.12", features = ["rust_backend"], default-features = false }
+zstd = { version = "0.5" }
 seahash = "3"
 twoway = "0.2"
 base64 = "0.10"
 rmp-serde = "0.13.7"    # rmp-serde 0.14.0 breaks deserialization by changing how enums are deserialized
-hashbrown = { version = "0.6", features = ["serde"] }
+hashbrown = { version = "0.7", features = ["serde"] }
 lifeguard = { version = "0.6", optional = true }
 cssparser = { version = "0.25", optional = true }
 selectors = { version = "0.21", optional = true }

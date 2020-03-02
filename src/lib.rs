@@ -11,7 +11,7 @@ extern crate bitflags;
 extern crate matches; // #[cfg(test)]
 
 extern crate rmp_serde as rmps;   // binary serialization/deserialization
-extern crate flate2;
+extern crate zstd;
 extern crate regex;
 extern crate idna;      // utf domain handling
 extern crate base64;

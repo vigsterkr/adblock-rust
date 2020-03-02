@@ -1,9 +1,9 @@
 use serde;
 use serde::{Serialize, Deserialize};
 
-use flate2::write::GzEncoder;
-use flate2::read::GzDecoder;
-use flate2::Compression;
+use zstd::stream::write::Encoder;
+use zstd::stream::read::Decoder;
+use zstd;
 
 use bincode;
 
@@ -36,14 +36,14 @@ impl<'a> serde::Serialize for Wrapper<'a> {
             blocker: &'b Vec<u8>
         }
 
-        let mut gz = GzEncoder::new(Vec::new(), Compression::default());
+        let mut zst = Encoder::new(Vec::new(), zstd::DEFAULT_COMPRESSION_LEVEL).unwrap();
 
-        bincode::serialize_into(&mut gz, &self)
+        bincode::serialize_into(&mut zst, &self)
             .or_else(|e| {
                 Err(D::Error::invalid_value(::serde::de::Unexpected::Other("Failed to serialize to bincode"), &e.to_string().as_str()))
             })?;
-        
-        let compressed = gz.finish().unwrap();
+
+        let compressed = zst.finish().unwrap();
             .or_else(|e| {
                 Err(D::Error::invalid_value(::serde::de::Unexpected::Other("Failed to finish Gzip encoding"), &e.to_string().as_str()))
             })?;
@@ -85,8 +85,8 @@ impl<'de> serde::Deserialize<'de> for Unwrappable {
             ));
         }
 
-        let gz = GzDecoder::new(&input.blocker[..]);
-        let blocker = bincode::deserialize_from(gz)
+        let zst = Decoder::new(serialized).unwrap();
+        let blocker = bincode::deserialize_from(zst)
             .or_else(|e| {
                 Err(D::Error::invalid_value(::serde::de::Unexpected::Other("Failed to parse bincode formatted data"), &e.to_string().as_str()))
             })?;

@@ -8,9 +8,9 @@ use crate::filters::cosmetic::CosmeticFilter;
 use crate::resources::{Resource, RedirectResource};
 use crate::utils::is_eof_error;
 use rmps;
-use flate2::write::GzEncoder;
-use flate2::read::GzDecoder;
-use flate2::Compression;
+use zstd::stream::write::Encoder;
+use zstd::stream::read::Decoder;
+use zstd;
 use std::collections::HashSet;
 
 pub struct Engine {
@@ -42,34 +42,34 @@ impl Engine {
     }
 
     pub fn serialize(&self) -> Result<Vec<u8>, BlockerError> {
-        let mut gz = GzEncoder::new(Vec::new(), Compression::default());
-        rmps::encode::write(&mut gz, &self.blocker)
+        let mut zst = Encoder::new(Vec::new(), zstd::DEFAULT_COMPRESSION_LEVEL).unwrap();
+        rmps::encode::write(&mut zst, &self.blocker)
             .or_else(|e| {
                 eprintln!("Error serializing: {:?}", e);
                 Err(BlockerError::SerializationError)
             })?;
-        rmps::encode::write(&mut gz, &self.cosmetic_cache)
+        rmps::encode::write(&mut zst, &self.cosmetic_cache)
             .or_else(|e| {
                 eprintln!("Error serializing cosmetic filters: {:?}", e);
                 Err(BlockerError::SerializationError)
             })?;
 
-        let compressed = gz.finish()
+        let compressed = zst.finish()
             .or_else(|_| Err(BlockerError::SerializationError))?;
         Ok(compressed)
     }
 
     pub fn deserialize(&mut self, serialized: &[u8]) -> Result<(), BlockerError> {
         let current_tags = self.blocker.tags_enabled();
-        let mut gz = GzDecoder::new(serialized);
-        let blocker = rmps::decode::from_read(&mut gz)
+        let mut zst = Decoder::new(serialized).unwrap();
+        let blocker = rmps::decode::from_read(&mut zst)
             .or_else(|e| {
                 eprintln!("Error deserializing: {:?}", e);
                 Err(BlockerError::DeserializationError)
             })?;
         self.blocker = blocker;
         self.blocker.with_tags(&current_tags.iter().map(|s| &**s).collect::<Vec<_>>());
-        match rmps::decode::from_read(&mut gz) {
+        match rmps::decode::from_read(&mut zst) {
             Ok(cosmetic_cache) => self.cosmetic_cache = cosmetic_cache,
             Err(ref e) if is_eof_error(e) => {
                 // Ignore if didn't find any cosmetic filters
@@ -99,7 +99,7 @@ impl Engine {
                 error: Some("Error parsing request".to_owned())
             }
         })
-        
+
     }
 
     pub fn check_network_urls_with_hostnames(
@@ -194,7 +194,7 @@ impl Engine {
     pub fn tags_disable<'a>(&'a mut self, tags: &[&str]) {
         self.blocker.tags_disable(tags);
     }
-    
+
     pub fn tag_exists(&self, tag: &str) -> bool {
         self.blocker.tags_enabled().contains(&tag.to_owned())
     }
@@ -240,7 +240,7 @@ impl Engine {
 mod tests {
     use super::*;
     use crate::resources::{ResourceType, MimeType};
-    
+
     #[test]
     fn tags_enable_adds_tags() {
         let filters = vec![
@@ -284,7 +284,7 @@ mod tests {
             ("https://brianbondy.com/about", true),
             ("https://brave.com/about", true),
         ];
-        
+
         let mut engine = Engine::from_rules(&filters);
         engine.tags_enable(&["brian", "stuff"]);
         engine.tags_disable(&["stuff"]);
@@ -311,7 +311,7 @@ mod tests {
             ("https://brianbondy.com/about", false),
             ("https://brianbondy.com/advert", true),
         ];
-        
+
         let engine = Engine::from_rules(&filters);
 
         url_results.into_iter().for_each(|(url, expected_result)| {
@@ -336,7 +336,7 @@ mod tests {
             ("https://brianbondy.com/about", false),
             ("https://brianbondy.com/advert", false),
         ];
-        
+
         let mut engine = Engine::from_rules(&filters);
         engine.tags_enable(&["brian", "stuff"]);
 
@@ -411,7 +411,7 @@ mod tests {
             113, 195, 55, 136, 98, 181, 132, 120, 65, 157, 17, 160, 180, 233, 152, 221, 1, 164, 98, 178, 255, 242, 178,
             221, 231, 201, 0, 19, 122, 216, 92, 112, 161, 1, 58, 213, 199, 143, 114, 0, 0, 0];
         let mut deserialized_engine = Engine::from_rules(&[]);
-        
+
         deserialized_engine.tags_enable(&[]);
         deserialized_engine.deserialize(&serialized).unwrap();
         let url = "http://example.com/ad-banner.gif";
@@ -483,7 +483,7 @@ mod tests {
             },
         ];
         engine.with_resources(&resources);
-        
+
         let serialized = engine.serialize().unwrap();
         println!("Engine serialized: {:?}", serialized);
     }
